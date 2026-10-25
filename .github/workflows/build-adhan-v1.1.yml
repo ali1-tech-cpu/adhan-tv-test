@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,6 +28,12 @@ jobs:
 
       - name: Install Android platform
         run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Install FFmpeg tools (ffprobe)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffprobe -version | head -n 1
 
       - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
@@ -54,7 +60,14 @@ jobs:
             | awk '{ if ($1 < 70 || $1 > 115) exit 1; }'
 
       - name: Build signed APK (same existing household test signing key)
-        run: gradle --no-daemon -p AdhanTVRelease :app:assembleDebug
+        run: gradle --no-daemon --stacktrace -p AdhanTVRelease :app:assembleDebug
+
+      - name: Verify produced APK file
+        run: |
+          APK='AdhanTVRelease/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          ls -lh "$APK"
+          test "$(stat -c '%s' "$APK")" -gt 200000
 
       - name: Upload installation APK
         uses: actions/upload-artifact@v4
