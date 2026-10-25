@@ -1,0 +1,64 @@
+name: Build Adhan TV 1.1 APK
+
+on:
+  push:
+    paths:
+      - 'AdhanTV-v1.1-source.zip'
+      - '.github/workflows/build-adhan-v1.1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android platform
+        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Extract v1.1 source
+        run: unzip -oq AdhanTV-v1.1-source.zip
+
+      - name: Download original short adhan recording (CC BY-SA 4.0, 1m27s)
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST='AdhanTVRelease/app/src/main/res/raw/adhan.mp3'
+          mkdir -p "$(dirname "$DEST")"
+          curl --fail --location --retry 4 --retry-delay 3 \
+            --connect-timeout 30 --max-time 180 \
+            -A 'AdhanTV-Personal-TV-App/1.1 (Wikimedia-Commons-CC-BY-SA-4.0)' \
+            'https://upload.wikimedia.org/wikipedia/commons/7/7d/The_Adhan_-_Muslim_Call_to_Prayer_-_Aaqib_Azeez.mp3' \
+            -o "$DEST"
+          test "$(stat -c '%s' "$DEST")" -gt 200000
+          ffprobe -v error -show_entries format=duration \
+            -of default=noprint_wrappers=1:nokey=1 "$DEST" \
+            | awk '{ if ($1 < 70 || $1 > 115) exit 1; }'
+
+      - name: Build signed APK (same existing household test signing key)
+        run: gradle --no-daemon -p AdhanTVRelease :app:assembleDebug
+
+      - name: Upload installation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AdhanTV-v1.1-APK
+          path: AdhanTVRelease/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
